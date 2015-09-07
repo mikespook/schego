@@ -31,7 +31,7 @@ func (t *_task) Cancel() error {
 
 func Test(t *testing.T) {
 	sche := New(time.Second)
-	sche.HandleError = func(evt Event, err error) {
+	sche.ErrorHandler = func(evt Event, err error) {
 		t.Errorf("%d, %s", evt.Id, err)
 	}
 	go sche.Loop()

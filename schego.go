@@ -13,11 +13,11 @@ var (
 
 type Scheduler struct {
 	sync.RWMutex
-	ticks       map[time.Duration][]interface{}
-	events      map[interface{}]Event
-	tick        time.Duration
-	fireChan    chan Event
-	HandleError func(Event, error)
+	ticks        map[time.Duration][]interface{}
+	events       map[interface{}]Event
+	tick         time.Duration
+	fireChan     chan Event
+	ErrorHandler func(Event, error)
 }
 
 func New(tick time.Duration) *Scheduler {
@@ -76,8 +76,8 @@ func (sche *Scheduler) fire() {
 }
 
 func (sche *Scheduler) err(evt Event, err error) {
-	if sche.HandleError != nil {
-		sche.HandleError(evt, err)
+	if sche.ErrorHandler != nil {
+		sche.ErrorHandler(evt, err)
 	}
 }
 
