@@ -15,42 +15,56 @@ type Scheduler struct {
 	sync.RWMutex
 	ticks        map[time.Duration][]interface{}
 	events       map[interface{}]Event
-	tick         time.Duration
 	fireChan     chan Event
 	ErrorHandler func(Event, error)
+
+	ticker <-chan time.Time
+	closer chan bool
 }
 
 func New(tick time.Duration) *Scheduler {
 	sche := &Scheduler{
 		ticks:    make(map[time.Duration][]interface{}),
 		events:   make(map[interface{}]Event),
-		tick:     tick,
 		fireChan: make(chan Event, 64),
+		ticker:   time.Tick(tick),
+		closer:   make(chan bool),
 	}
 	return sche
 }
 
-func (sche *Scheduler) Loop() {
+func (sche *Scheduler) Serve() {
 	go sche.fire()
-	for now := range time.Tick(sche.tick) {
-		go func(now time.Time) {
-			current := time.Duration(now.UnixNano())
-			sche.Lock()
-			defer sche.Unlock()
-			for t := range sche.ticks {
-				// task executing time less/equal current time
-				if t <= current {
-					for index := range sche.ticks[t] {
-						id := sche.ticks[t][index]
-						if evt, ok := sche.events[id]; ok {
-							sche.fireChan <- evt
+	for {
+		select {
+		case now := <-sche.ticker:
+			go func(now time.Time) {
+				current := time.Duration(now.UnixNano())
+				sche.Lock()
+				defer sche.Unlock()
+				for t := range sche.ticks {
+					// task executing time less/equal current time
+					if t <= current {
+						for index := range sche.ticks[t] {
+							id := sche.ticks[t][index]
+							if evt, ok := sche.events[id]; ok {
+								sche.fireChan <- evt
+							}
 						}
+						delete(sche.ticks, t)
 					}
-					delete(sche.ticks, t)
 				}
-			}
-		}(now)
+			}(now)
+		case <-sche.closer:
+			break
+		}
 	}
+}
+
+func (sche *Scheduler) Close() error {
+	sche.closer <- true
+	//	close(sche.fireChan)
+	return nil
 }
 
 func (sche *Scheduler) fire() {

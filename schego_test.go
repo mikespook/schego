@@ -29,12 +29,12 @@ func (t *_task) Cancel() error {
 	return nil
 }
 
-func Test(t *testing.T) {
+func TestServe(t *testing.T) {
 	sche := New(time.Second)
 	sche.ErrorHandler = func(evt Event, err error) {
 		t.Errorf("%d, %s", evt.Id, err)
 	}
-	go sche.Loop()
+	go sche.Serve()
 	n := time.Duration(time.Now().UnixNano())
 
 	var wg sync.WaitGroup
@@ -72,4 +72,36 @@ func Test(t *testing.T) {
 		Task:     &_task{t, &wg, id},
 	})
 	wg.Wait()
+}
+
+func TestClose(t *testing.T) {
+	sche := New(time.Microsecond * 10)
+	sche.ErrorHandler = func(evt Event, err error) {
+		t.Errorf("%d, %s", evt.Id, err)
+	}
+	n := time.Duration(time.Now().UnixNano())
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	id := ai.Id()
+	sche.Add(Event{
+		Id:       id,
+		Start:    n + time.Second,
+		Interval: time.Second,
+		Iterate:  0,
+		Task:     &_task{t, &wg, id},
+	})
+	id = ai.Id()
+	sche.Add(Event{
+		Id:       id,
+		Start:    n + time.Second,
+		Interval: time.Second,
+		Iterate:  0,
+		Task:     &_task{t, &wg, id},
+	})
+	go sche.Serve()
+	sche.Close()
+	if sche.Count() != 2 {
+		t.Errorf("2 Tasks expected, got %d", sche.Count())
+	}
 }
