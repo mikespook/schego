@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+const (
+	ForEver = -1
+)
+
 var (
 	ErrTaskNotFound  = errors.New("The task was not found.")
 	ErrTaskIsRunning = errors.New("The task is running.")
@@ -76,15 +80,17 @@ func (sche *Scheduler) fire() {
 					sche.err(evt, err)
 				}
 			}
-			if evt.Iterate <= 0 {
+			if evt.Iterate > 0 {
+				evt.Iterate--
+			}
+			if evt.Iterate == 0 {
 				sche.Lock()
 				delete(sche.events, evt.Id)
 				sche.Unlock()
-			} else {
-				evt.Start += evt.Interval
-				evt.Iterate--
-				sche.Add(evt)
+				return
 			}
+			evt.Start += evt.Interval
+			sche.Add(evt)
 		}(evt)
 	}
 }

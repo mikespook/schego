@@ -44,8 +44,11 @@ func TestServe(t *testing.T) {
 		Id:       id,
 		Start:    n + time.Second,
 		Interval: time.Second,
-		Iterate:  0,
-		Task:     &_task{t, &wg, id},
+		// negative number means running for ever;
+		// 0 or 1 is one time event;
+		// other numbers show how many time will be executed.
+		Iterate: 1,
+		Task:    &_task{t, &wg, id},
 	})
 	id = ai.Id()
 	sche.Add(Event{
@@ -60,7 +63,7 @@ func TestServe(t *testing.T) {
 		Id:       id,
 		Start:    n + 2*time.Second,
 		Interval: time.Second,
-		Iterate:  0,
+		Iterate:  1,
 		Task:     &_task{t, &wg, id},
 	})
 	id = ai.Id()
@@ -68,7 +71,7 @@ func TestServe(t *testing.T) {
 		Id:       id,
 		Start:    n + 2*time.Second,
 		Interval: time.Second,
-		Iterate:  0,
+		Iterate:  1,
 		Task:     &_task{t, &wg, id},
 	})
 	wg.Wait()
