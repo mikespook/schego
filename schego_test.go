@@ -15,16 +15,15 @@ var (
 type _task struct {
 	t  *testing.T
 	wg *sync.WaitGroup
-	id interface{}
 }
 
-func (t *_task) Exec() error {
-	t.t.Logf("%s Shoot!", t.id)
+func (t *_task) Exec(id interface{}) error {
+	t.t.Logf("%s Shoot!", id)
 	t.wg.Done()
 	return nil
 }
-func (t *_task) Cancel() error {
-	t.t.Log("%s Cancel!", t.id)
+func (t *_task) Cancel(id interface{}) error {
+	t.t.Log("%s Cancel!", id)
 	t.wg.Done()
 	return nil
 }
@@ -48,7 +47,7 @@ func TestServe(t *testing.T) {
 		// 0 or 1 is one time event;
 		// other numbers show how many time will be executed.
 		Iterate: 1,
-		Task:    &_task{t, &wg, id},
+		Task:    &_task{t, &wg},
 	})
 	id = ai.Id()
 	sche.Add(Event{
@@ -56,7 +55,7 @@ func TestServe(t *testing.T) {
 		Start:    n + time.Second,
 		Interval: time.Second,
 		Iterate:  3,
-		Task:     &_task{t, &wg, id},
+		Task:     &_task{t, &wg},
 	})
 	id = ai.Id()
 	sche.Add(Event{
@@ -64,7 +63,7 @@ func TestServe(t *testing.T) {
 		Start:    n + 2*time.Second,
 		Interval: time.Second,
 		Iterate:  1,
-		Task:     &_task{t, &wg, id},
+		Task:     &_task{t, &wg},
 	})
 	id = ai.Id()
 	sche.Add(Event{
@@ -72,7 +71,7 @@ func TestServe(t *testing.T) {
 		Start:    n + 2*time.Second,
 		Interval: time.Second,
 		Iterate:  1,
-		Task:     &_task{t, &wg, id},
+		Task:     &_task{t, &wg},
 	})
 	wg.Wait()
 }
@@ -92,7 +91,7 @@ func TestClose(t *testing.T) {
 		Start:    n + time.Second,
 		Interval: time.Second,
 		Iterate:  0,
-		Task:     &_task{t, &wg, id},
+		Task:     &_task{t, &wg},
 	})
 	id = ai.Id()
 	sche.Add(Event{
@@ -100,7 +99,7 @@ func TestClose(t *testing.T) {
 		Start:    n + time.Second,
 		Interval: time.Second,
 		Iterate:  0,
-		Task:     &_task{t, &wg, id},
+		Task:     &_task{t, &wg},
 	})
 	go sche.Serve()
 	sche.Close()

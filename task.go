@@ -2,6 +2,6 @@ package schego
 
 // Task Interface
 type Task interface {
-	Exec() error
-	Cancel() error
+	Exec(id interface{}) error
+	Cancel(id interface{}) error
 }
