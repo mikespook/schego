@@ -75,7 +75,7 @@ func (sche *Scheduler) fire() {
 	for evt := range sche.fireChan {
 		go func(evt Event) {
 			if evt.Task != nil {
-				err := evt.Task.Exec(evt.Id)
+				err := evt.Task.Exec(evt.TaskId())
 				if err != nil {
 					sche.err(evt, err)
 				}
@@ -121,7 +121,7 @@ func (sche *Scheduler) Cancel(id interface{}) (err error) {
 	sche.Lock()
 	defer sche.Unlock()
 	if evt, ok := sche.events[id]; ok {
-		err = evt.Task.Cancel(id)
+		err = evt.Task.Cancel(evt.TaskId())
 		delete(sche.events, id)
 		return
 	}
@@ -132,7 +132,7 @@ func (sche *Scheduler) Exec(id interface{}) (err error) {
 	sche.Lock()
 	defer sche.Unlock()
 	if evt, ok := sche.events[id]; ok {
-		err = evt.Task.Exec(id)
+		err = evt.Task.Exec(evt.TaskId())
 		delete(sche.events, id)
 		return
 	}
