@@ -1,21 +1,26 @@
 package schego
 
 import (
+	"context"
+	"sync"
 	"time"
 
 	"github.com/mikespook/golib/idgen"
 )
 
-type Event struct {
-	Id        interface{}
+type ExecFunc func(ctx context.Context) error
+
+type event struct {
+	sync.RWMutex
+	Id        string
 	TaskIdGen idgen.IdGen
 	Start     time.Duration
 	Interval  time.Duration
 	Iterate   int
-	Task      Task
+	ExecFunc  ExecFunc
 }
 
-func (evt Event) TaskId() interface{} {
+func (evt event) TaskId() interface{} {
 	if evt.TaskIdGen != nil {
 		return evt.TaskIdGen.Id()
 	}

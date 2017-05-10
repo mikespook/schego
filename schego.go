@@ -1,9 +1,12 @@
 package schego
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/mikespook/golib/idgen"
 )
 
 const (
@@ -17,69 +20,67 @@ var (
 
 type Scheduler struct {
 	sync.RWMutex
-	ticks        map[time.Duration][]interface{}
-	events       map[interface{}]Event
-	fireChan     chan Event
-	ErrorHandler func(Event, error)
+	ticks    map[time.Duration][]interface{}
+	events   map[interface{}]event
+	fireChan chan event
+	ticker   *time.Ticker
 
-	ticker <-chan time.Time
-	closer chan bool
+	ErrorFunc func(context.Context, error)
 }
 
-func New(tick time.Duration) *Scheduler {
+func New(d time.Duration) *Scheduler {
 	sche := &Scheduler{
 		ticks:    make(map[time.Duration][]interface{}),
-		events:   make(map[interface{}]Event),
-		fireChan: make(chan Event, 64),
-		ticker:   time.Tick(tick),
-		closer:   make(chan bool),
+		events:   make(map[interface{}]event),
+		fireChan: make(chan event, 64),
+		ticker:   time.NewTicker(d),
 	}
 	return sche
 }
 
 func (sche *Scheduler) Serve() {
 	go sche.fire()
-	for {
-		select {
-		case now := <-sche.ticker:
-			go func(now time.Time) {
-				current := time.Duration(now.UnixNano())
-				sche.Lock()
-				defer sche.Unlock()
-				for t := range sche.ticks {
-					// task executing time less/equal current time
-					if t <= current {
-						for index := range sche.ticks[t] {
-							id := sche.ticks[t][index]
-							if evt, ok := sche.events[id]; ok {
-								sche.fireChan <- evt
-							}
+	for now := range sche.ticker.C {
+		go func(now time.Time) {
+			current := time.Duration(now.UnixNano())
+			sche.Lock()
+			defer sche.Unlock()
+			for t := range sche.ticks {
+				// task executing time less/equal current time
+				if t <= current {
+					for index := range sche.ticks[t] {
+						id := sche.ticks[t][index]
+						if evt, ok := sche.events[id]; ok {
+							sche.fireChan <- evt
 						}
-						delete(sche.ticks, t)
 					}
+					delete(sche.ticks, t)
 				}
-			}(now)
-		case <-sche.closer:
-			break
-		}
+			}
+		}(now)
 	}
 }
 
 func (sche *Scheduler) Close() error {
-	sche.closer <- true
-	//	close(sche.fireChan)
+	sche.ticker.Stop()
+	close(sche.fireChan)
 	return nil
 }
 
 func (sche *Scheduler) fire() {
 	for evt := range sche.fireChan {
-		go func(evt Event) {
-			if evt.Task != nil {
-				err := evt.Task.Exec(evt.TaskId())
-				if err != nil {
-					sche.err(evt, err)
-				}
+		go func(evt event) {
+			if evt.ExecFunc != nil {
+				go func(evt event) {
+					ctx := context.WithValue(context.Background(), "event", evt)
+					err := evt.ExecFunc(ctx)
+					if err != nil {
+						sche.err(ctx, err)
+					}
+				}(evt)
 			}
+			evt.Lock()
+			defer evt.Unlock()
 			if evt.Iterate > 0 {
 				evt.Iterate--
 			}
@@ -90,18 +91,30 @@ func (sche *Scheduler) fire() {
 				return
 			}
 			evt.Start += evt.Interval
-			sche.Add(evt)
+			sche.add(evt)
 		}(evt)
 	}
 }
 
-func (sche *Scheduler) err(evt Event, err error) {
-	if sche.ErrorHandler != nil {
-		sche.ErrorHandler(evt, err)
+func (sche *Scheduler) err(ctx context.Context, err error) {
+	if sche.ErrorFunc != nil {
+		sche.ErrorFunc(ctx, err)
 	}
 }
 
-func (sche *Scheduler) Add(evt Event) {
+func (sche *Scheduler) Add(id string, start time.Duration, interval time.Duration, iterate int, f ExecFunc) {
+	evt := event{
+		Id:        id,
+		TaskIdGen: idgen.NewObjectId(),
+		Start:     start,
+		Interval:  interval,
+		Iterate:   iterate,
+		ExecFunc:  f,
+	}
+	sche.add(evt)
+}
+
+func (sche *Scheduler) add(evt event) {
 	sche.Lock()
 	defer sche.Unlock()
 	sche.events[evt.Id] = evt
@@ -109,53 +122,4 @@ func (sche *Scheduler) Add(evt Event) {
 		sche.ticks[evt.Start] = make([]interface{}, 0, 8)
 	}
 	sche.ticks[evt.Start] = append(sche.ticks[evt.Start], evt.Id)
-}
-
-func (sche *Scheduler) Remove(id interface{}) {
-	sche.Lock()
-	defer sche.Unlock()
-	delete(sche.events, id)
-}
-
-func (sche *Scheduler) Cancel(id interface{}) (err error) {
-	sche.Lock()
-	defer sche.Unlock()
-	if evt, ok := sche.events[id]; ok {
-		err = evt.Task.Cancel(evt.TaskId())
-		delete(sche.events, id)
-		return
-	}
-	return ErrTaskNotFound
-}
-
-func (sche *Scheduler) Exec(id interface{}) (err error) {
-	sche.Lock()
-	defer sche.Unlock()
-	if evt, ok := sche.events[id]; ok {
-		err = evt.Task.Exec(evt.TaskId())
-		delete(sche.events, id)
-		return
-	}
-	return ErrTaskNotFound
-}
-
-func (sche *Scheduler) Get(id interface{}) Event {
-	sche.RLock()
-	defer sche.RUnlock()
-	if evt, ok := sche.events[id]; ok {
-		return evt
-	}
-	return Event{}
-}
-
-func (sche *Scheduler) Count() int {
-	sche.RLock()
-	defer sche.RUnlock()
-	return len(sche.events)
-}
-
-func (sche *Scheduler) TickCount(t time.Duration) int {
-	sche.RLock()
-	defer sche.RUnlock()
-	return len(sche.ticks[t])
 }
