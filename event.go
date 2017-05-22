@@ -14,7 +14,7 @@ type event struct {
 	sync.RWMutex
 	Id        string
 	TaskIdGen idgen.IdGen
-	Start     time.Duration
+	Start     time.Time
 	Interval  time.Duration
 	Iterate   int
 	ExecFunc  ExecFunc

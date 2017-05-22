@@ -20,7 +20,7 @@ var (
 
 type Scheduler struct {
 	sync.RWMutex
-	ticks    map[time.Duration][]interface{}
+	ticks    map[time.Time][]interface{}
 	events   map[interface{}]event
 	fireChan chan event
 	ticker   *time.Ticker
@@ -30,7 +30,7 @@ type Scheduler struct {
 
 func New(d time.Duration) *Scheduler {
 	sche := &Scheduler{
-		ticks:    make(map[time.Duration][]interface{}),
+		ticks:    make(map[time.Time][]interface{}),
 		events:   make(map[interface{}]event),
 		fireChan: make(chan event, 64),
 		ticker:   time.NewTicker(d),
@@ -42,12 +42,11 @@ func (sche *Scheduler) Serve() {
 	go sche.fire()
 	for now := range sche.ticker.C {
 		go func(now time.Time) {
-			current := time.Duration(now.UnixNano())
 			sche.Lock()
 			defer sche.Unlock()
 			for t := range sche.ticks {
 				// task executing time less/equal current time
-				if t <= current {
+				if t.Before(now) {
 					for index := range sche.ticks[t] {
 						id := sche.ticks[t][index]
 						if evt, ok := sche.events[id]; ok {
@@ -79,18 +78,20 @@ func (sche *Scheduler) fire() {
 					}
 				}(evt)
 			}
-			evt.Lock()
-			defer evt.Unlock()
-			if evt.Iterate > 0 {
-				evt.Iterate--
+			if evt.Iterate != ForEver {
+				evt.Lock()
+				defer evt.Unlock()
+				if evt.Iterate > 0 {
+					evt.Iterate--
+				}
+				if evt.Iterate == 0 {
+					sche.Lock()
+					delete(sche.events, evt.Id)
+					sche.Unlock()
+					return
+				}
 			}
-			if evt.Iterate == 0 {
-				sche.Lock()
-				delete(sche.events, evt.Id)
-				sche.Unlock()
-				return
-			}
-			evt.Start += evt.Interval
+			evt.Start = evt.Start.Add(evt.Interval)
 			sche.add(evt)
 		}(evt)
 	}
@@ -102,7 +103,9 @@ func (sche *Scheduler) err(ctx context.Context, err error) {
 	}
 }
 
-func (sche *Scheduler) Add(id string, start time.Duration, interval time.Duration, iterate int, f ExecFunc) {
+func (sche *Scheduler) Add(id string, start time.Time, interval time.Duration, iterate int, f ExecFunc) {
+	sche.Lock()
+	defer sche.Unlock()
 	evt := event{
 		Id:        id,
 		TaskIdGen: idgen.NewObjectId(),
@@ -115,8 +118,6 @@ func (sche *Scheduler) Add(id string, start time.Duration, interval time.Duratio
 }
 
 func (sche *Scheduler) add(evt event) {
-	sche.Lock()
-	defer sche.Unlock()
 	sche.events[evt.Id] = evt
 	if sche.ticks[evt.Start] == nil {
 		sche.ticks[evt.Start] = make([]interface{}, 0, 8)
